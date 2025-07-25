@@ -13,81 +13,72 @@ pipeline {
             }
         }
         
-        stage('Environment Check') {
+        stage('Test Application via Docker') {
             steps {
                 script {
-                    if (isUnix()) {
+                    sh '''
+                        echo "Testing Flask app using Docker..."
+                        docker build -t test-flask-app .
+                        docker run --rm test-flask-app python app/app.py --version
+                        echo "✅ Flask app test passed via Docker"
+                    '''
+                }
+            }
+        }
+        
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_HUB_PASSWORD', usernameVariable: 'DOCKER_HUB_USERNAME')]) {
                         sh '''
-                            echo "Running on Unix/Linux"
-                            python3 --version || echo "python3 not found"
-                            python --version || echo "python not found"
-                            pwd
-                            ls -la
-                        '''
-                    } else {
-                        bat '''
-                            echo "Running on Windows"
-                            python --version 2>nul || echo "Python not found"
-                            cd
-                            dir
+                            docker build -t ${DOCKER_HUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG} .
+                            docker tag ${DOCKER_HUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG} ${DOCKER_HUB_USERNAME}/${IMAGE_NAME}:latest
                         '''
                     }
                 }
             }
         }
         
-        stage('Simple Test') {
+        stage('Test Docker Image') {
             steps {
                 script {
-                    if (isUnix()) {
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_HUB_PASSWORD', usernameVariable: 'DOCKER_HUB_USERNAME')]) {
                         sh '''
-                            echo "Testing Flask app on Unix"
-                            python3 -c "print('Python works!')"
-                        '''
-                    } else {
-                        bat '''
-                            echo "Testing Flask app on Windows"
-                            python -c "print('Python works!')"
-                            echo "Checking requirements file..."
-                            type requirements.txt
-                            echo "Checking app directory..."
-                            dir app
+                            docker run --rm -d -p 5001:5000 --name test-container-${BUILD_NUMBER} ${DOCKER_HUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
+                            sleep 15
+                            curl -f http://localhost:5001/health || exit 1
+                            docker stop test-container-${BUILD_NUMBER}
+                            echo "✅ Docker image test passed"
                         '''
                     }
                 }
             }
         }
         
-        stage('Install Dependencies') {
+        stage('Push to Docker Hub') {
             steps {
                 script {
-                    if (isUnix()) {
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_HUB_PASSWORD', usernameVariable: 'DOCKER_HUB_USERNAME')]) {
                         sh '''
-                            python3 -m pip install --user -r requirements.txt
-                            echo "Dependencies installed"
-                        '''
-                    } else {
-                        bat '''
-                            python -m pip install --user -r requirements.txt
-                            echo "Dependencies installed"
+                            echo ${DOCKER_HUB_PASSWORD} | docker login -u ${DOCKER_HUB_USERNAME} --password-stdin
+                            docker push ${DOCKER_HUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
+                            docker push ${DOCKER_HUB_USERNAME}/${IMAGE_NAME}:latest
+                            docker logout
                         '''
                     }
                 }
             }
         }
         
-        stage('Test Flask App') {
+        stage('Clean Up') {
             steps {
                 script {
-                    if (isUnix()) {
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', passwordVariable: 'DOCKER_HUB_PASSWORD', usernameVariable: 'DOCKER_HUB_USERNAME')]) {
                         sh '''
-                            cd app
-                            python3 -c "import app; print('Flask app imported successfully')"
-                        '''
-                    } else {
-                        bat '''
-                            cd app
-                            python -c "import app; print('Flask app imported successfully')"
+                            docker rmi ${DOCKER_HUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG} || true
+                            docker rmi ${DOCKER_HUB_USERNAME}/${IMAGE_NAME}:latest || true
+                            docker rmi test-flask-app || true
+                            docker system prune -f
                         '''
                     }
                 }
@@ -100,7 +91,7 @@ pipeline {
             cleanWs()
         }
         success {
-            echo '✅ Pipeline completed successfully!'
+            echo '✅ Pipeline completed successfully! Docker image pushed to Docker Hub.'
         }
         failure {
             echo '❌ Pipeline failed! Check console output for details.'
