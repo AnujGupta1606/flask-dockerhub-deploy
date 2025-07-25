@@ -1,0 +1,29 @@
+# GitHub Repository Setup Commands
+
+# Repository बनने के बाद ये commands run करें:
+
+# 1. GitHub remote add करें (अपना username डालें)
+git remote add origin https://github.com/YOUR-USERNAME/flask-dockerhub-deploy.git
+
+# 2. Branch name set करें  
+git branch -M main
+
+# 3. पहली बार push करें
+git push -u origin main
+
+# 4. Future में push करने के लिए
+git push
+
+---
+
+# Alternative: अगर HTTPS issue हो तो SSH use करें
+git remote add origin git@github.com:YOUR-USERNAME/flask-dockerhub-deploy.git
+
+---
+
+# Commands जो आपको GitHub repo page पर मिलेंगे:
+# …or push an existing repository from the command line
+
+git remote add origin https://github.com/YOUR-USERNAME/flask-dockerhub-deploy.git
+git branch -M main  
+git push -u origin main
